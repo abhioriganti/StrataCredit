@@ -2,6 +2,28 @@
 
 StrataCredit is a practical loan-level structured-credit analytics workbench built with the Freddie Mac Single-Family Loan-Level Dataset. It takes raw origination and servicing files, validates and standardizes them, helps an analyst understand the collateral and its historical performance, and supports pool selection, stress testing, and exportable deal analysis.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    raw["Freddie Mac raw files"] --> ingest["Ingestion and Bronze Parquet"]
+    ingest --> quality["Data quality and reconciliation"]
+    quality --> silver["Silver canonical loan-month panel"]
+    silver --> gold["Gold analytical tables"]
+    gold --> performance["Collateral and performance analytics"]
+    silver --> features["Leakage-safe feature snapshots"]
+    features --> models["Models and MLflow tracking"]
+    models --> selection["Constrained pool selection"]
+    performance --> selection
+    selection --> stress["Stress scenarios"]
+    selection --> reports["Selected pool, replines, and memo"]
+    stress --> reports
+    gold --> app["Streamlit analyst workbench"]
+    models --> app
+    selection --> app
+    stress --> app
+```
+
 ## What you can do with StrataCredit
 
 - Raw-file metadata, checksum capture, typed Bronze Parquet, and DuckDB Silver/Gold layers.
