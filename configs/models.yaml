@@ -1,0 +1,213 @@
+# StrataCredit — Model Configuration
+# Training procedures, temporal splits, hyperparameters, and MLflow settings.
+# All modeling decisions that could be tuned should live here.
+
+# ─── Temporal Validation Split ───────────────────────────────────────────────
+# Out-of-time validation is the primary evaluation protocol.
+# Do NOT use random train/test splits as the final evaluation.
+#
+# Origination vintage determines the split, not a random seed.
+temporal_split:
+  train:
+    vintage_start: 2012
+    vintage_end: 2017
+  validation:
+    vintage_start: 2018
+    vintage_end: 2019
+  test:
+    vintage_start: 2020
+    vintage_end: 2022
+
+# ─── MLflow Tracking ──────────────────────────────────────────────────────────
+mlflow:
+  # MLflow 3.x requires a database-backed local store; this path is local to
+  # the repository and does not require a server or cloud account.
+  tracking_uri: sqlite:///mlflow.db
+  experiments:
+    credit_event_12m:
+      name: credit_event_12m
+      description: "12-month credit event probability models"
+    prepayment_12m:
+      name: prepayment_12m
+      description: "12-month voluntary prepayment probability models"
+    survival_credit:
+      name: survival_credit
+      description: "Survival model: time to credit event"
+    survival_prepay:
+      name: survival_prepay
+      description: "Survival model: time to voluntary prepayment"
+    loss_severity:
+      name: loss_severity
+      description: "Loss severity model: conditional on credit event"
+
+  # Fields logged for every run
+  required_tags:
+    - data_cutoff_date
+    - train_vintage_range
+    - validation_vintage_range
+    - test_vintage_range
+    - feature_set_version
+    - target_definition
+    - git_commit_sha
+    - model_type
+
+  # Artifacts logged for every run
+  required_artifacts:
+    - feature_importance.csv
+    - calibration_plot.png
+    - roc_curve.png
+    - pr_curve.png
+    - cohort_performance.csv
+    - model  # MLflow model artifact
+
+# ─── Logistic Regression ──────────────────────────────────────────────────────
+logistic_regression:
+  credit_event_12m:
+    solver: lbfgs
+    max_iter: 1000
+    C: 1.0
+    class_weight: balanced
+    random_state: 42
+
+  prepayment_12m:
+    solver: lbfgs
+    max_iter: 1000
+    C: 1.0
+    class_weight: balanced
+    random_state: 42
+
+# ─── XGBoost ──────────────────────────────────────────────────────────────────
+xgboost:
+  # Shared defaults — overridden per model below
+  defaults:
+    tree_method: hist
+    eval_metric: [aucpr, logloss]
+    seed: 42
+    verbosity: 1
+    early_stopping_rounds: 50
+    n_estimators: 500
+
+  credit_event_12m:
+    objective: binary:logistic
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_weight: 50
+    scale_pos_weight: auto  # computed from class imbalance
+    reg_alpha: 0.1
+    reg_lambda: 1.0
+    random_state: 42
+
+  prepayment_12m:
+    objective: binary:logistic
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_weight: 50
+    scale_pos_weight: auto
+    reg_alpha: 0.1
+    reg_lambda: 1.0
+    random_state: 42
+
+# ─── Survival Analysis ────────────────────────────────────────────────────────
+survival:
+  framework: xgboost_aft  # XGBoost AFT (Accelerated Failure Time)
+  # Alternatively: "lifelines" for CoxPH or Weibull AFT
+
+  credit_event:
+    aft_loss_distribution: normal
+    max_depth: 5
+    learning_rate: 0.05
+    n_estimators: 300
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_weight: 50
+    random_state: 42
+    # Censoring: loans that have not experienced a credit event
+    # are right-censored at last observed month.
+
+  prepayment:
+    aft_loss_distribution: normal
+    max_depth: 5
+    learning_rate: 0.05
+    n_estimators: 300
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_weight: 50
+    random_state: 42
+
+# ─── Loss Severity Model ──────────────────────────────────────────────────────
+severity:
+  # Ridge regression baseline
+  ridge:
+    alpha: 1.0
+    random_state: 42
+
+  # XGBoost severity
+  xgboost:
+    objective: reg:squarederror
+    max_depth: 5
+    learning_rate: 0.05
+    n_estimators: 300
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_weight: 20
+    random_state: 42
+
+  # Severity is clipped to [0, 1.5] after prediction
+  # to remove unreasonable outliers.  See features.yaml target bounds.
+  clip_bounds: [0.0, 1.5]
+
+# ─── Preprocessing Pipeline ───────────────────────────────────────────────────
+preprocessing:
+  # Numeric: impute median, then standard-scale for logistic; no scaling for tree
+  numeric_impute_strategy: median
+
+  # Categorical: impute with "missing" then one-hot
+  categorical_impute_value: "missing"
+
+  # Cap outliers at percentile (applied before scaling)
+  outlier_cap_percentile: 99.5
+
+# ─── Evaluation Metrics ───────────────────────────────────────────────────────
+evaluation:
+  classification:
+    primary: roc_auc
+    all:
+      - roc_auc
+      - pr_auc
+      - brier_score
+      - log_loss
+      - top_decile_capture_rate
+      - balance_weighted_roc_auc
+    calibration:
+      n_bins: 10
+      strategy: uniform
+
+  severity:
+    primary: mae
+    all:
+      - mae
+      - rmse
+      - balance_weighted_mae
+      - bias
+
+  portfolio_level:
+    # Compare predicted vs realized at cohort level
+    cohort_dimensions:
+      - vintage_year
+      - fico_band
+      - ltv_band
+      - reporting_period
+    metrics:
+      - predicted_cpr_vs_realized
+      - predicted_credit_event_rate_vs_realized
+      - predicted_loss_vs_realized
+
+# ─── Calibration ──────────────────────────────────────────────────────────────
+calibration:
+  # Apply Platt scaling or isotonic regression post-training
+  method: isotonic  # or "sigmoid" (Platt)
+  cv_folds: 5

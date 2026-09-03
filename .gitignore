@@ -1,0 +1,120 @@
+# ─── Raw Mortgage Data (never commit) ────────────────────────────────────────
+data/raw/
+data/bronze/
+data/silver/
+data/gold/
+*.txt
+*.csv
+!data/README.md
+!data/fixtures/**
+!tests/**/*.csv
+
+# Keep fixture files
+!data/fixtures/
+data/fixtures/*.parquet
+
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ─── Virtual Environments ────────────────────────────────────────────────────
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.conda/
+
+# ─── Testing & Coverage ──────────────────────────────────────────────────────
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# ─── MLflow & Models ─────────────────────────────────────────────────────────
+mlruns/
+models/
+/mlflow.db
+*.pkl
+*.joblib
+*.onnx
+
+# The rule above excludes generated top-level model artifacts. Keep the
+# application source package under version control.
+!src/stratacredit/models/
+!src/stratacredit/models/**
+src/stratacredit/models/__pycache__/
+src/stratacredit/models/**/*.py[cod]
+
+# ─── Jupyter ─────────────────────────────────────────────────────────────────
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+profile_default/
+ipython_config.py
+
+# ─── IDEs ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ─── Ruff / mypy ─────────────────────────────────────────────────────────────
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ─── Streamlit ───────────────────────────────────────────────────────────────
+.streamlit/
+
+# ─── Great Expectations ──────────────────────────────────────────────────────
+uncommitted/
+
+# ─── Reports / Outputs ───────────────────────────────────────────────────────
+reports/
+outputs/
+*.html
+!docs/*.html
+
+# ─── DuckDB ──────────────────────────────────────────────────────────────────
+*.duckdb
+*.duckdb.wal
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Secrets ─────────────────────────────────────────────────────────────────
+.env.*
+secrets.yaml
+credentials.yaml

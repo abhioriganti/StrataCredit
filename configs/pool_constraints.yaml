@@ -1,0 +1,303 @@
+# StrataCredit — Pool Selection Constraints & Scenario Configuration
+# These are the default parameters for pool construction and stress analysis.
+# Override via CLI flags or the Streamlit Pool Builder UI.
+
+# ─── Pool Size ────────────────────────────────────────────────────────────────
+pool:
+  # Target aggregate current UPB for the selected pool (USD)
+  target_upb: 250_000_000
+
+  # Allowable percentage deviation from target UPB
+  # e.g. 0.5 means the pool can be $248.75M–$251.25M
+  upb_tolerance_pct: 0.5
+
+  # Maximum number of loans in the selected pool
+  # Set to 0 to disable this constraint
+  max_loan_count: 0
+
+  # Minimum number of loans
+  min_loan_count: 500
+
+# ─── Weighted-Average Constraints ─────────────────────────────────────────────
+wa_constraints:
+  # WA FICO
+  min_wa_fico: 745
+  max_wa_fico: 850  # set high to not effectively constrain the ceiling
+
+  # WA LTV (%)
+  min_wa_ltv: 0.0
+  max_wa_ltv: 72.0
+
+  # WA CLTV (%)
+  max_wa_cltv: 75.0
+
+  # WA DTI (%)
+  max_wa_dti: 40.0
+
+  # WA Coupon (%)
+  target_wac: null    # null = no WAC target
+  wac_tolerance_pct: 0.25   # ±0.25% of target WAC
+
+  # WA Loan Age (months)
+  min_wala: 0
+  max_wala: 60
+
+# ─── Concentration Limits ──────────────────────────────────────────────────────
+# All limits expressed as percentage of pool UPB unless noted.
+concentration:
+  # Individual state maximum
+  max_state_pct: 20.0
+
+  # Investor property share
+  max_investor_pct: 8.0
+
+  # Loans with origination LTV > 80
+  max_high_ltv_pct: 15.0
+
+  # Loans with origination FICO < 660
+  max_low_fico_pct: 5.0
+
+  # Loans with modifications on record
+  max_modified_pct: 5.0
+
+  # Loans currently delinquent (any DQ > 0)
+  max_delinquent_pct: 0.0   # require all loans current
+
+  # Second-home share
+  max_second_home_pct: 10.0
+
+  # Condo and manufactured home share (combined)
+  max_condo_mh_pct: 15.0
+
+  # Single state (top state) — alias for max_state_pct
+  # Repeated here for clarity
+  max_single_state_pct: 20.0
+
+# ─── Eligibility Filters ──────────────────────────────────────────────────────
+# Hard filters applied before constraint optimization.
+# A loan failing any eligibility filter is excluded from the candidate pool.
+eligibility:
+  # Only fully current loans
+  require_current: true
+
+  # Loans with outstanding active modifications
+  exclude_active_modifications: false
+
+  # Loans ever seriously delinquent (90+)
+  exclude_ever_90dpd: false
+
+  # Loans with zero balance code set (already terminated)
+  exclude_terminated: true
+
+  # Minimum remaining term (months)
+  min_remaining_term: 12
+
+  # Minimum current UPB
+  min_upb: 10_000
+
+  # Maximum current UPB
+  max_upb: 2_000_000
+
+  # Only include loans originated within these vintages
+  # Leave empty to include all available vintages
+  vintage_min: null
+  vintage_max: null
+
+  # Property types to include (null = all)
+  allowed_property_types: null
+
+  # Occupancy types to include (null = all)
+  allowed_occupancy_types: null
+
+# ─── Risk-Aware Selection Preferences ─────────────────────────────────────────
+# These are soft objectives used when ranking loans within candidate cells.
+# They do not hard-exclude loans but influence selection order.
+risk_preferences:
+  # Prefer loans with lower predicted credit event probability
+  minimize_predicted_credit_event: true
+
+  # Prefer loans with lower predicted prepayment probability
+  # (higher remaining duration for the pool)
+  minimize_predicted_prepayment: false
+
+  # Prefer loans with lower expected loss
+  minimize_expected_loss: true
+
+  # Weights for multi-objective scoring (must sum to 1.0)
+  weights:
+    credit_event_score: 0.50
+    prepayment_score: 0.20
+    expected_loss_score: 0.30
+
+# ─── Repline Grouping Dimensions ──────────────────────────────────────────────
+replines:
+  # Dimensions used to bucket loans into representative collateral cells
+  grouping_dimensions:
+    - fico_band
+    - ltv_band
+    - coupon_band
+    - origination_year
+    - state_group
+
+  # State grouping: map individual states to regional groups
+  state_groups:
+    northeast: [CT, MA, ME, NH, NJ, NY, PA, RI, VT]
+    southeast: [AL, AR, FL, GA, KY, LA, MS, NC, SC, TN, VA, WV]
+    midwest:   [IA, IL, IN, KS, MI, MN, MO, ND, NE, OH, SD, WI]
+    southwest: [AZ, NM, OK, TX]
+    west:      [AK, CA, CO, HI, ID, MT, NV, OR, UT, WA, WY]
+    dc:        [DC, MD]
+
+  # Minimum loans per repline cell (cells with fewer loans are merged up)
+  min_cell_loans: 5
+
+# ─── Stress Scenarios ─────────────────────────────────────────────────────────
+# Multipliers are applied to base predicted rates from the models.
+# These are NOT rating-agency models.  They are deterministic sensitivity tools.
+scenarios:
+  base:
+    label: "Base Case"
+    description: "No stress applied. Uses model point estimates directly."
+    default_multiplier: 1.00
+    severity_multiplier: 1.00
+    prepayment_multiplier: 1.00
+
+  moderate_stress:
+    label: "Moderate Stress"
+    description: >
+      Moderate housing market deterioration.
+      Credit events elevated ~50%, severities up ~15%,
+      prepayments somewhat reduced.
+    default_multiplier: 1.50
+    severity_multiplier: 1.15
+    prepayment_multiplier: 0.90
+
+  severe_stress:
+    label: "Severe Stress"
+    description: >
+      Significant housing market downturn.
+      Credit events doubled, severities up ~30%,
+      prepayments materially reduced.
+    default_multiplier: 2.00
+    severity_multiplier: 1.30
+    prepayment_multiplier: 0.75
+
+  very_severe_stress:
+    label: "Very Severe Stress"
+    description: >
+      Extreme scenario approaching GFC conditions.
+      Credit events tripled, severities up 50%,
+      prepayments near-halted.
+    default_multiplier: 3.00
+    severity_multiplier: 1.50
+    prepayment_multiplier: 0.60
+
+# ─── Scenario Output Fields ───────────────────────────────────────────────────
+scenario_outputs:
+  - scenario_label
+  - pool_upb
+  - projected_credit_events
+  - projected_credit_event_pct
+  - projected_defaults_12m
+  - projected_prepayments_12m
+  - projected_prepayment_pct
+  - projected_gross_loss_usd
+  - projected_gross_loss_pct
+  - projected_net_loss_usd       # after MI recoveries
+  - cumulative_loss_pct_3yr
+  - cumulative_loss_pct_5yr
+  - scenario_delta_vs_base
+  - indicative_loss_cushion      # user-defined CE minus projected loss
+  - indicative_ce_sensitivity    # how much additional CE absorbs the stress
+
+# ─── Constraint Reconciliation ────────────────────────────────────────────────
+reconciliation:
+  # Tolerance for floating point comparison in constraint checks
+  float_tolerance: 0.001
+
+  # Fields shown in the pass/fail reconciliation table
+  constraint_display:
+    - name: "Pool UPB"
+      field: current_upb
+      target_field: target_upb
+      unit: "$"
+      format: ",.0f"
+    - name: "Loan Count"
+      field: loan_count
+      unit: ""
+      format: ",d"
+    - name: "Min WA FICO"
+      field: wa_fico
+      target_field: min_wa_fico
+      direction: ">="
+      unit: ""
+      format: ".0f"
+    - name: "Max WA LTV"
+      field: wa_ltv
+      target_field: max_wa_ltv
+      direction: "<="
+      unit: "%"
+      format: ".1f"
+    - name: "Max WA DTI"
+      field: wa_dti
+      target_field: max_wa_dti
+      direction: "<="
+      unit: "%"
+      format: ".1f"
+    - name: "Max Investor Share"
+      field: investor_pct
+      target_field: max_investor_pct
+      direction: "<="
+      unit: "%"
+      format: ".1f"
+    - name: "Max High-LTV Share"
+      field: high_ltv_pct
+      target_field: max_high_ltv_pct
+      direction: "<="
+      unit: "%"
+      format: ".1f"
+    - name: "Max Low-FICO Share"
+      field: low_fico_pct
+      target_field: max_low_fico_pct
+      direction: "<="
+      unit: "%"
+      format: ".1f"
+    - name: "Max Modified Share"
+      field: modified_pct
+      target_field: max_modified_pct
+      direction: "<="
+      unit: "%"
+      format: ".1f"
+    - name: "Max Single-State Conc."
+      field: max_state_pct_actual
+      target_field: max_single_state_pct
+      direction: "<="
+      unit: "%"
+      format: ".1f"
+    - name: "Max Delinquent Share"
+      field: delinquent_pct
+      target_field: max_delinquent_pct
+      direction: "<="
+      unit: "%"
+      format: ".1f"
+
+# ─── Selection Algorithm ──────────────────────────────────────────────────────
+selection:
+  # Phase 1: deterministic greedy constrained selection (V1)
+  algorithm: greedy_constrained
+
+  # Cell-level allocation: allocate target UPB proportionally across
+  # repline cells, then select highest-scoring loans within each cell.
+  cell_allocation: proportional_upb
+
+  # When a cell is under-allocated (not enough eligible loans), allow
+  # the shortfall to be redistributed to neighboring cells.
+  allow_cell_rebalancing: true
+
+  # Maximum iterations for constraint reconciliation loop
+  max_reconciliation_iterations: 10
+
+  # V2 optimization (optional, requires pulp or ortools):
+  # Set to true to use MIP optimization instead of greedy.
+  use_mip: false
+  mip_solver: pulp   # pulp or ortools

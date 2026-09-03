@@ -1,0 +1,259 @@
+# StrataCredit — Data Configuration
+# Paths, Freddie Mac schema mappings, and data layer settings.
+
+# ─── Paths ──────────────────────────────────────────────────────────────────
+
+paths:
+  raw: data/raw
+  fixtures: data/fixtures
+  bronze: data/bronze
+  silver: data/silver
+  gold: data/gold
+  reports: reports
+  outputs: outputs
+
+database:
+  # DuckDB file for Silver/Gold analytical tables
+  silver_db: data/silver/stratacredit_silver.duckdb
+  gold_db: data/gold/stratacredit_gold.duckdb
+
+# ─── Freddie Mac Source Schema ───────────────────────────────────────────────
+#
+# Freddie Mac Single-Family Loan-Level Dataset
+# Two file types per vintage:
+#   origination:   fixed-pipe-delimited, no header
+#   performance:   fixed-pipe-delimited, no header
+#
+# Reference: https://www.freddiemac.com/research/datasets/sf-loanlevel-dataset
+
+freddie_mac:
+  delimiter: "|"
+  encoding: "utf-8"
+  # Vintage patterns — raw directory organized as data/raw/{vintage}/
+  vintage_pattern: "\\d{4}Q\\d"
+
+  origination:
+    filename_pattern: "sample_orig_*.txt"
+    # Column index → (source_name, dtype)
+    columns:
+      - [credit_score, Int64]
+      - [first_payment_date, Utf8]
+      - [first_time_homebuyer_flag, Utf8]
+      - [maturity_date, Utf8]
+      - [msa, Utf8]
+      - [mi_pct, Float64]
+      - [num_units, Int64]
+      - [occupancy_status, Utf8]
+      - [cltv, Float64]
+      - [dti, Float64]
+      - [original_upb, Float64]
+      - [ltv, Float64]
+      - [original_interest_rate, Float64]
+      - [channel, Utf8]
+      - [prepayment_penalty_flag, Utf8]
+      - [amort_type, Utf8]
+      - [property_state, Utf8]
+      - [property_type, Utf8]
+      - [postal_code, Utf8]
+      - [loan_sequence_number, Utf8]
+      - [loan_purpose, Utf8]
+      - [original_loan_term, Int64]
+      - [num_borrowers, Int64]
+      - [seller_name, Utf8]
+      - [servicer_name, Utf8]
+      - [super_conforming_flag, Utf8]
+      - [pre_harp_sequence_number, Utf8]
+      - [program_indicator, Utf8]
+      - [harp_indicator, Utf8]
+      - [property_valuation_method, Utf8]
+      - [interest_only_indicator, Utf8]
+      - [mi_cancellation_indicator, Utf8]
+
+  performance:
+    filename_pattern: "sample_svcg_*.txt"
+    # Column index → (source_name, dtype)
+    columns:
+      - [loan_sequence_number, Utf8]
+      - [monthly_reporting_period, Utf8]
+      - [current_actual_upb, Float64]
+      - [current_loan_delinquency_status, Utf8]
+      - [loan_age, Int64]
+      - [remaining_months_to_legal_maturity, Int64]
+      - [defect_settlement_date, Utf8]
+      - [modification_flag, Utf8]
+      - [zero_balance_code, Utf8]
+      - [zero_balance_effective_date, Utf8]
+      - [current_interest_rate, Float64]
+      - [current_deferred_upb, Float64]
+      - [ddlpi, Utf8]
+      - [mi_recoveries, Float64]
+      - [net_sale_proceeds, Utf8]
+      - [non_mi_recoveries, Float64]
+      - [expenses, Float64]
+      - [legal_costs, Float64]
+      - [maintenance_costs, Float64]
+      - [taxes_insurance, Float64]
+      - [miscellaneous_expenses, Float64]
+      - [actual_loss_calculation, Float64]
+      - [modification_cost, Float64]
+      - [step_modification_flag, Utf8]
+      - [deferred_payment_plan, Utf8]
+      - [estimated_ltv, Float64]
+      - [zero_balance_removal_upb, Float64]
+      - [delinquent_accrued_interest, Float64]
+      - [delinquency_due_to_disaster, Utf8]
+      - [borrower_assistance_status_code, Utf8]
+      - [current_month_modification_cost, Float64]
+      - [interest_bearing_upb, Float64]
+
+# ─── Sentinel / Missing-Value Codes ──────────────────────────────────────────
+# Freddie Mac uses 9/99/999/9999 sentinel patterns for missing data.
+# These must be converted to null before downstream use.
+
+sentinels:
+  integer: [9, 99, 999, 9999]
+  float: [9.0, 99.0, 999.0, 9999.0]
+  string: ["9", "99", "999", "9999", ""]
+
+# Columns where sentinel replacement should be applied
+sentinel_columns:
+  origination:
+    integer: [credit_score, num_units, original_loan_term, num_borrowers]
+    float: [mi_pct, cltv, dti, original_upb, ltv, original_interest_rate]
+  performance:
+    integer: [loan_age, remaining_months_to_legal_maturity]
+    float: [current_actual_upb, current_interest_rate, current_deferred_upb,
+            estimated_ltv, mi_recoveries, non_mi_recoveries, expenses,
+            legal_costs, maintenance_costs, taxes_insurance,
+            miscellaneous_expenses, actual_loss_calculation, modification_cost,
+            zero_balance_removal_upb, delinquent_accrued_interest,
+            current_month_modification_cost, interest_bearing_upb]
+
+# ─── Date Formats ─────────────────────────────────────────────────────────────
+date_formats:
+  yyyymm: "%Y%m"
+  mmyyyy: "%m%Y"
+
+# ─── Zero Balance Codes ───────────────────────────────────────────────────────
+# Freddie Mac zero balance code → business meaning
+zero_balance_codes:
+  "01": voluntary_prepayment
+  "02": third_party_sale
+  "03": short_sale
+  "06": repurchase
+  "09": reo_disposition
+  "15": note_sale
+  "16": reperforming_sale
+  "96": repurchase_credit_enhancement
+  "97": repurchase_mbs
+  "98": unknown
+  "09": foreclosure_alternative
+
+# ─── Loan Purpose Codes ───────────────────────────────────────────────────────
+loan_purpose_codes:
+  P: purchase
+  C: cash_out_refinance
+  R: rate_refinance
+  U: unknown
+
+# ─── Occupancy Codes ─────────────────────────────────────────────────────────
+occupancy_codes:
+  P: primary_residence
+  S: second_home
+  I: investor_property
+  U: unknown
+
+# ─── Property Type Codes ─────────────────────────────────────────────────────
+property_type_codes:
+  SF: single_family
+  CO: condo
+  MH: manufactured_home
+  CP: co_op
+  PU: planned_unit_development
+
+# ─── Channel Codes ───────────────────────────────────────────────────────────
+channel_codes:
+  R: retail
+  B: broker
+  C: correspondent
+  T: tpo_other
+
+# ─── Delinquency Status ───────────────────────────────────────────────────────
+# Freddie Mac encodes DQ status as "0", "1", "2", ..., "RA" (REO Acquired)
+# See Section 3 of the user guide for complete reference.
+delinquency_codes:
+  current: ["0", "00"]
+  dq_30: ["1", "01"]
+  dq_60: ["2", "02"]
+  dq_90plus: ["3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]
+  ra: ["RA"]  # REO Acquired
+
+# ─── Analytical Bands ─────────────────────────────────────────────────────────
+bands:
+  fico:
+    - [300, 619, "< 620"]
+    - [620, 639, "620–639"]
+    - [640, 659, "640–659"]
+    - [660, 679, "660–679"]
+    - [680, 699, "680–699"]
+    - [700, 719, "700–719"]
+    - [720, 739, "720–739"]
+    - [740, 759, "740–759"]
+    - [760, 779, "760–779"]
+    - [780, 850, "780+"]
+
+  ltv:
+    - [0,  60,  "≤ 60%"]
+    - [60,  65, "60–65%"]
+    - [65,  70, "65–70%"]
+    - [70,  75, "70–75%"]
+    - [75,  80, "75–80%"]
+    - [80,  85, "80–85%"]
+    - [85,  90, "85–90%"]
+    - [90,  95, "90–95%"]
+    - [95, 105, "95%+"]
+
+  cltv:
+    - [0,   70, "≤ 70%"]
+    - [70,  80, "70–80%"]
+    - [80,  90, "80–90%"]
+    - [90,  97, "90–97%"]
+    - [97, 200, "97%+"]
+
+  dti:
+    - [0,  28, "≤ 28%"]
+    - [28, 36, "28–36%"]
+    - [36, 43, "36–43%"]
+    - [43, 50, "43–50%"]
+    - [50, 100, "50%+"]
+
+  coupon:
+    - [0.0,  3.0, "< 3.0%"]
+    - [3.0,  3.5, "3.0–3.5%"]
+    - [3.5,  4.0, "3.5–4.0%"]
+    - [4.0,  4.5, "4.0–4.5%"]
+    - [4.5,  5.0, "4.5–5.0%"]
+    - [5.0,  5.5, "5.0–5.5%"]
+    - [5.5,  6.0, "5.5–6.0%"]
+    - [6.0,  7.0, "6.0–7.0%"]
+    - [7.0, 15.0, "7.0%+"]
+
+  loan_age:
+    - [0,  12,  "0–12 mo"]
+    - [12, 24,  "12–24 mo"]
+    - [24, 36,  "24–36 mo"]
+    - [36, 60,  "36–60 mo"]
+    - [60, 84,  "60–84 mo"]
+    - [84, 120, "84–120 mo"]
+    - [120, 999, "120+ mo"]
+
+# ─── Pipeline Settings ────────────────────────────────────────────────────────
+pipeline:
+  # How many raw files to ingest in one run (0 = all)
+  max_files: 0
+  # Row batch size for Polars lazy scanning
+  scan_batch_rows: 500000
+  # Bronze Parquet compression
+  parquet_compression: snappy
+  # Partition Bronze by vintage year
+  partition_by_vintage: true

@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e '.[dev]'
+      - run: ruff check src tests app
+      - run: ruff format --check src tests app
+      - run: python -m compileall -q src app
+      - run: python -m stratacredit.fixtures.generate
+      - run: pytest tests -m 'not integration' --no-cov
+      - run: pytest tests/integration/test_pipeline_smoke.py -m smoke --no-cov

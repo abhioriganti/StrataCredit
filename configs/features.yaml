@@ -1,0 +1,278 @@
+# StrataCredit — Feature Configuration
+# Defines all feature groups, model-specific feature sets, and
+# snapshot construction parameters.  Feature sets are maintained
+# here rather than hard-coded in model training scripts so that
+# they can be versioned and audited.
+
+# ─── Snapshot Settings ───────────────────────────────────────────────────────
+snapshot:
+  # Scoring date cadence: monthly
+  cadence: monthly
+  # Minimum loan age before a loan enters any snapshot (months)
+  min_loan_age_months: 1
+  # Look-forward horizon for classification targets (months)
+  horizon_months: 12
+  # Minimum number of future months required for a loan to be
+  # included as a labeled observation (prevents partial targets)
+  min_forward_months: 12
+
+# ─── Target Definitions ───────────────────────────────────────────────────────
+targets:
+  credit_event_12m:
+    description: >
+      Binary: whether a qualifying terminal credit event occurs
+      within the 12-month look-forward window from scoring date t.
+    qualifying_zbc: ["02", "03", "09", "15"]  # See data.yaml zero_balance_codes
+    type: binary
+
+  serious_delinquency_12m:
+    description: >
+      Binary: whether the loan reaches 90+ DPD at any point
+      within the 12-month look-forward window.
+    delinquency_threshold: 90
+    type: binary
+
+  prepayment_12m:
+    description: >
+      Binary: whether a voluntary prepayment (ZBC = 01) occurs
+      within the 12-month look-forward window.
+    qualifying_zbc: ["01"]
+    type: binary
+
+  loss_severity:
+    description: >
+      Continuous: realized loss / zero_balance_removal_upb
+      for observations that experienced a qualifying credit event.
+      Only non-null for terminated credit-event loans.
+    type: continuous
+    bounds: [0.0, 1.5]  # Allow slightly above 1.0 for over-loss scenarios
+
+# ─── Feature Groups ────────────────────────────────────────────────────────────
+#
+# Features are organized by conceptual category.
+# All features in 'origination_static' are known at loan origination
+# and are safe at any scoring date.
+# Features in 'performance_dynamic' are the loan's status AS OF date t;
+# they must come from the loan_month_panel row at time t, not any later row.
+# Features in 'derived_*' are computed from data available at or before t.
+
+feature_groups:
+
+  # ── Origination Characteristics (static, known at origination) ─────────────
+  origination_static:
+    - original_upb
+    - original_interest_rate
+    - original_loan_term
+    - ltv
+    - cltv
+    - credit_score        # FICO at origination
+    - dti
+    - mi_pct
+    - num_units
+    - num_borrowers
+    - loan_purpose_encoded      # one-hot or label-encoded
+    - occupancy_encoded
+    - property_type_encoded
+    - channel_encoded
+    - property_state_encoded
+    - first_time_homebuyer_flag_encoded
+    - interest_only_indicator_encoded
+    - super_conforming_flag_encoded
+    - origination_year
+    - origination_quarter
+
+  # ── Performance Snapshot (dynamic, as-of date t) ───────────────────────────
+  performance_snapshot:
+    - current_upb                 # as of t
+    - current_interest_rate       # as of t
+    - loan_age                    # months since origination
+    - remaining_term              # months remaining
+    - current_delinquency_months  # 0 = current, 1 = 30DPD, 2 = 60DPD, etc.
+    - modification_flag_encoded
+    - borrower_assistance_flag_encoded
+    - estimated_ltv               # updated at t by servicer
+
+  # ── Derived Time-Series Features (computed up to and including t) ──────────
+  derived_history:
+    - months_in_30dpd_last_12m    # count of months at 30DPD in prior 12m
+    - months_in_60dpd_last_12m
+    - months_in_90plus_last_12m
+    - ever_modified               # binary: has loan ever been modified as of t
+    - prior_cure_events           # count of times loan rolled back to current
+    - max_delinquency_ever        # max DQ months reached before t
+    - months_since_last_dq        # months since most recent delinquency event
+    - upb_change_3m               # UPB % change over last 3 months
+    - upb_change_6m
+    - rate_spread                 # current_rate − origination_rate (for ARM proxy)
+
+  # ── Macro / Cohort Context (portfolio-level at time t) ─────────────────────
+  macro_context:
+    - vintage_year                # origination year
+    - vintage_quarter
+    - reporting_year              # year of scoring date t
+    - reporting_month
+    - seasons_since_origination   # fractional year for seasonal patterns
+
+# ─── Model-Specific Feature Sets ──────────────────────────────────────────────
+#
+# Each model references feature_groups by name.
+# Order matters for model serialization and reproducibility.
+
+model_features:
+
+  logistic_credit_event:
+    groups:
+      - origination_static
+      - performance_snapshot
+      - derived_history
+    notes: "Logistic regression baseline — no macro context to keep interpretable"
+
+  logistic_prepayment:
+    groups:
+      - origination_static
+      - performance_snapshot
+      - derived_history
+    notes: "Logistic regression baseline for prepayment"
+
+  xgb_credit_event:
+    groups:
+      - origination_static
+      - performance_snapshot
+      - derived_history
+      - macro_context
+    notes: "XGBoost nonlinear credit event model"
+
+  xgb_prepayment:
+    groups:
+      - origination_static
+      - performance_snapshot
+      - derived_history
+      - macro_context
+    notes: "XGBoost nonlinear prepayment model"
+
+  survival_credit:
+    groups:
+      - origination_static
+      - performance_snapshot
+      - derived_history
+      - macro_context
+    notes: "AFT survival model — time to first credit event, right-censored"
+
+  survival_prepay:
+    groups:
+      - origination_static
+      - performance_snapshot
+      - derived_history
+      - macro_context
+    notes: "AFT survival model — time to voluntary prepayment, right-censored"
+
+  severity:
+    groups:
+      - origination_static
+      - derived_history
+    # For severity we use origination chars plus delinquency history.
+    # We do NOT use any performance fields from after the credit event.
+    additional_features:
+      - time_to_termination_months
+      - termination_type_encoded
+      - state_hpi_change_to_termination  # optional: HPI index if available
+    notes: "Loss severity model — conditional on credit event having occurred"
+
+# ─── Encoding Specifications ──────────────────────────────────────────────────
+encoding:
+  # Categorical columns and their encoding approach
+  loan_purpose_encoded:
+    source: loan_purpose
+    method: onehot
+    categories: [purchase, cash_out_refinance, rate_refinance, unknown]
+
+  occupancy_encoded:
+    source: occupancy_status
+    method: onehot
+    categories: [primary_residence, second_home, investor_property, unknown]
+
+  property_type_encoded:
+    source: property_type
+    method: onehot
+    categories: [single_family, condo, manufactured_home, co_op, planned_unit_development]
+
+  channel_encoded:
+    source: channel
+    method: onehot
+    categories: [retail, broker, correspondent, tpo_other]
+
+  property_state_encoded:
+    source: property_state
+    method: target_mean  # Too many levels for one-hot
+    min_samples: 100     # Fall back to global mean for rare states
+
+  modification_flag_encoded:
+    source: modification_flag
+    method: binary
+    positive_value: "Y"
+
+  first_time_homebuyer_flag_encoded:
+    source: first_time_homebuyer_flag
+    method: binary
+    positive_value: "Y"
+
+  interest_only_indicator_encoded:
+    source: interest_only_indicator
+    method: binary
+    positive_value: "Y"
+
+  super_conforming_flag_encoded:
+    source: super_conforming_flag
+    method: binary
+    positive_value: "Y"
+
+  borrower_assistance_flag_encoded:
+    source: borrower_assistance_status_code
+    method: binary
+    positive_value: "Y"
+
+  termination_type_encoded:
+    source: zero_balance_code
+    method: onehot
+    categories: [voluntary_prepayment, third_party_sale, short_sale,
+                 reo_disposition, note_sale, other]
+
+# ─── Leakage Guard Configuration ──────────────────────────────────────────────
+leakage_guard:
+  # These columns are NEVER allowed as features in any model.
+  # Attempting to use them triggers an error in the feature builder.
+  forbidden_always:
+    - zero_balance_code
+    - zero_balance_effective_date
+    - zero_balance_removal_upb
+    - actual_loss_calculation
+    - net_sale_proceeds
+    - mi_recoveries
+    - non_mi_recoveries
+    - expenses
+    - legal_costs
+    - maintenance_costs
+    - taxes_insurance
+    - miscellaneous_expenses
+    - modification_cost
+    - current_month_modification_cost
+    - delinquent_accrued_interest
+    - defect_settlement_date
+
+  # These columns are allowed only after being windowed to [0, t].
+  # The feature builder must verify the time constraint is enforced.
+  time_restricted:
+    - current_loan_delinquency_status
+    - current_actual_upb
+    - current_interest_rate
+    - loan_age
+    - remaining_months_to_legal_maturity
+    - modification_flag
+
+  # Post-event columns — never use in predictive features
+  post_event_forbidden:
+    - net_sale_proceeds
+    - actual_loss_calculation
+    - mi_recoveries
+    - non_mi_recoveries
+    - expenses
