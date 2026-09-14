@@ -25,11 +25,21 @@ from stratacredit.performance.severity import compute_severity
 
 # Post-event columns that must never be features for severity model
 _SEV_FORBIDDEN = {
-    "net_sale_proceeds", "mi_recoveries", "non_mi_recoveries",
-    "expenses", "legal_costs", "maintenance_costs", "taxes_insurance",
-    "miscellaneous_expenses", "actual_loss", "modification_cost",
-    "delinquent_accrued_interest", "total_recoveries", "recovery_rate",
-    "over_recovery_flag", "loss_severity",
+    "net_sale_proceeds",
+    "mi_recoveries",
+    "non_mi_recoveries",
+    "expenses",
+    "legal_costs",
+    "maintenance_costs",
+    "taxes_insurance",
+    "miscellaneous_expenses",
+    "actual_loss",
+    "modification_cost",
+    "delinquent_accrued_interest",
+    "total_recoveries",
+    "recovery_rate",
+    "over_recovery_flag",
+    "loss_severity",
 }
 
 
@@ -66,11 +76,13 @@ def train_severity_ridge(
     valid = ~np.isnan(y)
     X, y = X[valid], y[valid]
 
-    pipe = Pipeline([
-        ("imputer", SimpleImputer(strategy="median")),
-        ("scaler",  StandardScaler()),
-        ("model",   Ridge(alpha=1.0)),
-    ])
+    pipe = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+            ("model", Ridge(alpha=1.0)),
+        ]
+    )
     pipe.fit(X, y)
     y_pred = pipe.predict(X)
     metrics = evaluate_severity(y, y_pred, split="train")
@@ -85,26 +97,26 @@ def train_severity_xgb(
 ) -> tuple[xgb.XGBRegressor, list[str], SimpleImputer, SeverityMetrics, SeverityMetrics]:
     """Train an XGBoost severity regression model."""
     params = {
-        "objective":        "reg:squarederror",
-        "max_depth":        5,
-        "learning_rate":    0.05,
-        "subsample":        0.8,
+        "objective": "reg:squarederror",
+        "max_depth": 5,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
         "colsample_bytree": 0.8,
         "min_child_weight": 20,
-        "tree_method":      "hist",
-        "seed":             42,
-        "verbosity":        0,
+        "tree_method": "hist",
+        "seed": 42,
+        "verbosity": 0,
     }
 
     train_enc = encode_categoricals(train_df)
-    val_enc   = encode_categoricals(val_df)
+    val_enc = encode_categoricals(val_df)
 
     if feature_cols is None:
         feature_cols = get_feature_columns(train_enc, target_cols=["loss_severity"])
         feature_cols = [c for c in feature_cols if c not in _SEV_FORBIDDEN]
 
     X_tr, y_tr = to_numpy(train_enc, feature_cols, "loss_severity")
-    X_va, y_va = to_numpy(val_enc,   feature_cols, "loss_severity")
+    X_va, y_va = to_numpy(val_enc, feature_cols, "loss_severity")
 
     mask_tr = ~np.isnan(y_tr)
     mask_va = ~np.isnan(y_va)

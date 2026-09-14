@@ -27,7 +27,7 @@ def _load_split(conn, years: str, target: str, sample_pct: int | None) -> pd.Dat
             f" AND ({target} = 1 OR MOD(ABS(HASH(loan_id, scoring_date)), 100) < {sample_pct})"
         )
     query = f"""
-        SELECT {', '.join(FEATURES)}, {target}
+        SELECT {", ".join(FEATURES)}, {target}
         FROM gold.model_snapshots
         WHERE origination_year {years}{sample_filter}
     """
@@ -78,7 +78,11 @@ def _fit_target(conn, target: str, sample_pct: int) -> dict[str, float | str]:
         {"target": target, "feature": FEATURES, "importance": model.feature_importances_}
     ).sort_values("importance", ascending=False)
     conn.register("xgb_importance", importance)
-    conn.execute("CREATE OR REPLACE TABLE gold.gold_xgboost_feature_importance AS SELECT * FROM xgb_importance") if target == "credit_event_12m" else conn.execute("INSERT INTO gold.gold_xgboost_feature_importance SELECT * FROM xgb_importance")
+    conn.execute(
+        "CREATE OR REPLACE TABLE gold.gold_xgboost_feature_importance AS SELECT * FROM xgb_importance"
+    ) if target == "credit_event_12m" else conn.execute(
+        "INSERT INTO gold.gold_xgboost_feature_importance SELECT * FROM xgb_importance"
+    )
     conn.unregister("xgb_importance")
     return {
         "model_name": "xgboost_temporal_challenger",
@@ -99,7 +103,9 @@ def run() -> dict[str, dict[str, float | str]]:
             console.print(f"[green]{target} XGBoost OOT: {results[target]}[/green]")
         frame = pd.DataFrame(results.values())
         conn.register("xgb_metrics", frame)
-        conn.execute("CREATE OR REPLACE TABLE gold.gold_xgboost_model_metrics AS SELECT * FROM xgb_metrics")
+        conn.execute(
+            "CREATE OR REPLACE TABLE gold.gold_xgboost_model_metrics AS SELECT * FROM xgb_metrics"
+        )
         conn.unregister("xgb_metrics")
     return results
 

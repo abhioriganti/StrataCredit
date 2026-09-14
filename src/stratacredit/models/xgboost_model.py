@@ -10,19 +10,18 @@ from sklearn.impute import SimpleImputer
 from stratacredit.features.encoder import encode_categoricals, get_feature_columns, to_numpy
 from stratacredit.models.base import ClassificationMetrics, evaluate_classification
 
-
 _DEFAULT_PARAMS = {
-    "objective":        "binary:logistic",
-    "max_depth":        6,
-    "learning_rate":    0.05,
-    "subsample":        0.8,
+    "objective": "binary:logistic",
+    "max_depth": 6,
+    "learning_rate": 0.05,
+    "subsample": 0.8,
     "colsample_bytree": 0.8,
     "min_child_weight": 50,
-    "reg_alpha":        0.1,
-    "reg_lambda":       1.0,
-    "tree_method":      "hist",
-    "seed":             42,
-    "verbosity":        0,
+    "reg_alpha": 0.1,
+    "reg_lambda": 1.0,
+    "tree_method": "hist",
+    "seed": 42,
+    "verbosity": 0,
 }
 
 
@@ -52,17 +51,17 @@ def train_xgb(
     p = {**_DEFAULT_PARAMS, **(params or {})}
 
     train_df = encode_categoricals(train_df).filter(pl.col(target_col).is_not_null())
-    val_df   = encode_categoricals(val_df).filter(pl.col(target_col).is_not_null())
+    val_df = encode_categoricals(val_df).filter(pl.col(target_col).is_not_null())
 
     if feature_cols is None:
         feature_cols = get_feature_columns(train_df, target_cols=[target_col])
 
     imputer = SimpleImputer(strategy="median")
     X_train, y_train = to_numpy(train_df, feature_cols, target_col)
-    X_val,   y_val   = to_numpy(val_df,   feature_cols, target_col)
+    X_val, y_val = to_numpy(val_df, feature_cols, target_col)
 
     X_train = imputer.fit_transform(X_train)
-    X_val   = imputer.transform(X_val)
+    X_val = imputer.transform(X_val)
 
     # Handle class imbalance
     pos_weight = float((y_train == 0).sum()) / max(float((y_train == 1).sum()), 1)
@@ -75,7 +74,8 @@ def train_xgb(
         **p,
     )
     model.fit(
-        X_train, y_train.astype(int),
+        X_train,
+        y_train.astype(int),
         eval_set=[(X_val, y_val.astype(int))],
         verbose=False,
     )
@@ -84,9 +84,9 @@ def train_xgb(
     model._feature_cols = feature_cols
 
     train_scores = model.predict_proba(X_train)[:, 1]
-    val_scores   = model.predict_proba(X_val)[:, 1]
+    val_scores = model.predict_proba(X_val)[:, 1]
     train_m = evaluate_classification(y_train, train_scores, split="train")
-    val_m   = evaluate_classification(y_val,   val_scores,   split="validation")
+    val_m = evaluate_classification(y_val, val_scores, split="validation")
 
     return model, feature_cols, train_m, val_m
 
@@ -119,7 +119,6 @@ def feature_importance_xgb(
 ) -> pl.DataFrame:
     """Extract XGBoost feature importance scores."""
     scores = model.feature_importances_
-    return (
-        pl.DataFrame({"feature": feature_cols, "importance": scores.tolist()})
-        .sort("importance", descending=True)
+    return pl.DataFrame({"feature": feature_cols, "importance": scores.tolist()}).sort(
+        "importance", descending=True
     )

@@ -26,7 +26,9 @@ FORBIDDEN_TOKENS = (
 def run() -> None:
     """Validate snapshot field eligibility and write diagnostic Gold tables."""
     forbidden_features = [
-        feature for feature in FEATURES if any(token in feature.lower() for token in FORBIDDEN_TOKENS)
+        feature
+        for feature in FEATURES
+        if any(token in feature.lower() for token in FORBIDDEN_TOKENS)
     ]
     with get_connection("gold") as conn:
         snapshot_rows, terminal_rows, credit_events, prepays = conn.execute("""
@@ -44,7 +46,8 @@ def run() -> None:
                     "severity": "FAIL",
                     "status": "PASS" if not forbidden_features else "FAIL",
                     "metric": float(len(forbidden_features)),
-                    "detail": ", ".join(forbidden_features) or "No forbidden feature tokens in model feature list.",
+                    "detail": ", ".join(forbidden_features)
+                    or "No forbidden feature tokens in model feature list.",
                 },
                 {
                     "check_name": "terminal_scoring_rows_excluded",
@@ -70,7 +73,9 @@ def run() -> None:
             ]
         )
         conn.register("leakage_audit", audit)
-        conn.execute("CREATE OR REPLACE TABLE gold.gold_model_leakage_audit AS SELECT * FROM leakage_audit")
+        conn.execute(
+            "CREATE OR REPLACE TABLE gold.gold_model_leakage_audit AS SELECT * FROM leakage_audit"
+        )
         conn.unregister("leakage_audit")
         conn.execute("""
             CREATE OR REPLACE TABLE gold.gold_credit_event_cohort_audit AS

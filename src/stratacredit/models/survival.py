@@ -47,33 +47,43 @@ def build_survival_dataset(
     last = (
         panel.sort(["loan_id", "reporting_period"])
         .group_by("loan_id")
-        .agg([
-            pl.col(event_col).any().alias("event_occurred"),
-            pl.col(time_col).last().alias("time_obs"),
-            # Feature columns: take last non-null value
-            *[
-                pl.col(c).last().alias(c)
-                for c in panel.columns
-                if c not in {"loan_id", event_col, time_col, "reporting_period"}
-                and c not in {
-                    "zero_balance_code", "zero_balance_effective_date",
-                    "zero_balance_removal_upb", "actual_loss_calculation",
-                    "net_sale_proceeds", "mi_recoveries", "non_mi_recoveries",
-                    "expenses", "actual_loss",
-                }
-            ],
-        ])
+        .agg(
+            [
+                pl.col(event_col).any().alias("event_occurred"),
+                pl.col(time_col).last().alias("time_obs"),
+                # Feature columns: take last non-null value
+                *[
+                    pl.col(c).last().alias(c)
+                    for c in panel.columns
+                    if c not in {"loan_id", event_col, time_col, "reporting_period"}
+                    and c
+                    not in {
+                        "zero_balance_code",
+                        "zero_balance_effective_date",
+                        "zero_balance_removal_upb",
+                        "actual_loss_calculation",
+                        "net_sale_proceeds",
+                        "mi_recoveries",
+                        "non_mi_recoveries",
+                        "expenses",
+                        "actual_loss",
+                    }
+                ],
+            ]
+        )
     )
 
     # For events: time_lower = time_upper = observed time
     # For censored: time_lower = observed time, time_upper = +inf (use -1 in XGB)
-    last = last.with_columns([
-        pl.col("time_obs").alias("time_lower"),
-        pl.when(pl.col("event_occurred"))
-        .then(pl.col("time_obs"))
-        .otherwise(pl.lit(-1.0))   # -1 = right-censored in XGBoost AFT
-        .alias("time_upper"),
-    ])
+    last = last.with_columns(
+        [
+            pl.col("time_obs").alias("time_lower"),
+            pl.when(pl.col("event_occurred"))
+            .then(pl.col("time_obs"))
+            .otherwise(pl.lit(-1.0))  # -1 = right-censored in XGBoost AFT
+            .alias("time_upper"),
+        ]
+    )
 
     return last
 
@@ -96,16 +106,16 @@ def train_survival(
         (model, feature_cols, imputer)
     """
     default_params = {
-        "objective":           "survival:aft",
+        "objective": "survival:aft",
         "aft_loss_distribution": "normal",
-        "max_depth":           5,
-        "learning_rate":       0.05,
-        "subsample":           0.8,
-        "colsample_bytree":    0.8,
-        "min_child_weight":    50,
-        "tree_method":         "hist",
-        "seed":                42,
-        "verbosity":           0,
+        "max_depth": 5,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 50,
+        "tree_method": "hist",
+        "seed": 42,
+        "verbosity": 0,
     }
     p = {**default_params, **(params or {})}
 

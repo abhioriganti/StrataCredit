@@ -17,11 +17,28 @@ from stratacredit.models.evaluation import classification_metrics
 
 console = Console()
 FEATURES = [
-    "current_upb", "original_upb", "original_interest_rate", "current_interest_rate",
-    "fico", "original_ltv", "original_cltv", "dti", "loan_age", "remaining_term",
-    "delinquency_months", "estimated_ltv", "modification_flag", "loan_purpose_code",
-    "occupancy_code", "property_type_code", "reporting_month", "dq30_months_last_12m",
-    "dq60_months_last_12m", "dq90_months_last_12m", "max_dq_last_12m", "ever_modified_last_12m",
+    "current_upb",
+    "original_upb",
+    "original_interest_rate",
+    "current_interest_rate",
+    "fico",
+    "original_ltv",
+    "original_cltv",
+    "dti",
+    "loan_age",
+    "remaining_term",
+    "delinquency_months",
+    "estimated_ltv",
+    "modification_flag",
+    "loan_purpose_code",
+    "occupancy_code",
+    "property_type_code",
+    "reporting_month",
+    "dq30_months_last_12m",
+    "dq60_months_last_12m",
+    "dq90_months_last_12m",
+    "max_dq_last_12m",
+    "ever_modified_last_12m",
 ]
 BATCH_SIZE = 100_000
 ARTIFACT_DIR = Path("artifacts/models")
@@ -33,8 +50,17 @@ def _batches(conn, where: str, target: str):
     query = f"SELECT {', '.join(FEATURES)}, {target} FROM gold.model_snapshots WHERE {where}"
     for batch in conn.execute(query).fetch_record_batch(BATCH_SIZE):
         frame = batch.to_pandas()
-        x = frame[FEATURES].replace([np.inf, -np.inf], np.nan).fillna(0.0).to_numpy(dtype=np.float32)
-        yield x, frame[target].to_numpy(dtype=np.int8), frame["current_upb"].to_numpy(dtype=np.float64)
+        x = (
+            frame[FEATURES]
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(0.0)
+            .to_numpy(dtype=np.float32)
+        )
+        yield (
+            x,
+            frame[target].to_numpy(dtype=np.int8),
+            frame["current_upb"].to_numpy(dtype=np.float64),
+        )
 
 
 def _fit_target(conn, target: str) -> tuple[StandardScaler, SGDClassifier, dict[str, float]]:
@@ -52,7 +78,9 @@ def _fit_target(conn, target: str) -> tuple[StandardScaler, SGDClassifier, dict[
     first = True
     for x, y, _ in _batches(conn, train_where, target):
         weights = np.where(y == 1, event_weight, 1.0)
-        model.partial_fit(scaler.transform(x), y, classes=np.array([0, 1], dtype=np.int8), sample_weight=weights) if first else model.partial_fit(scaler.transform(x), y, sample_weight=weights)
+        model.partial_fit(
+            scaler.transform(x), y, classes=np.array([0, 1], dtype=np.int8), sample_weight=weights
+        ) if first else model.partial_fit(scaler.transform(x), y, sample_weight=weights)
         first = False
     return scaler, model, {"train_positive": float(positives), "train_negative": float(negatives)}
 

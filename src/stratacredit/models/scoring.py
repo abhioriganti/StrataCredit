@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 import joblib
 import numpy as np
 import pandas as pd
 from rich.console import Console
 
-from stratacredit.models.full_trainer import BATCH_SIZE, FEATURES
 from stratacredit.db import get_connection
+from stratacredit.models.full_trainer import BATCH_SIZE, FEATURES
 
 console = Console()
 ARTIFACT_DIR = Path("artifacts/models")
@@ -26,7 +26,7 @@ def _score_batches(conn):
     credit_xgb = joblib.load(credit_xgb_path) if credit_xgb_path.exists() else None
     prepay_xgb = joblib.load(prepay_xgb_path) if prepay_xgb_path.exists() else None
     query = f"""
-        SELECT loan_id, scoring_date, origination_year, {', '.join(FEATURES)},
+        SELECT loan_id, scoring_date, origination_year, {", ".join(FEATURES)},
                credit_event_12m, prepayment_12m
         FROM gold.model_snapshots
         WHERE {HOLDOUT_FILTER}
@@ -40,20 +40,18 @@ def _score_batches(conn):
             .to_numpy(dtype=np.float32)
         )
         scored = {
-                "loan_id": frame["loan_id"],
-                "scoring_date": frame["scoring_date"],
-                "origination_year": frame["origination_year"],
-                "current_upb": frame["current_upb"],
-                "fico": frame["fico"],
-                "original_ltv": frame["original_ltv"],
-                "credit_event_12m": frame["credit_event_12m"],
-                "prepayment_12m": frame["prepayment_12m"],
-                "credit_event_score": credit["model"].predict_proba(
-                    credit["scaler"].transform(x)
-                )[:, 1],
-                "prepayment_score": prepay["model"].predict_proba(
-                    prepay["scaler"].transform(x)
-                )[:, 1],
+            "loan_id": frame["loan_id"],
+            "scoring_date": frame["scoring_date"],
+            "origination_year": frame["origination_year"],
+            "current_upb": frame["current_upb"],
+            "fico": frame["fico"],
+            "original_ltv": frame["original_ltv"],
+            "credit_event_12m": frame["credit_event_12m"],
+            "prepayment_12m": frame["prepayment_12m"],
+            "credit_event_score": credit["model"].predict_proba(credit["scaler"].transform(x))[
+                :, 1
+            ],
+            "prepayment_score": prepay["model"].predict_proba(prepay["scaler"].transform(x))[:, 1],
         }
         if credit_xgb is not None:
             scored["credit_event_xgb_score"] = credit_xgb["model"].predict_proba(x)[:, 1]
@@ -65,10 +63,12 @@ def _score_batches(conn):
 def persist_scores() -> None:
     """Score all OOT snapshots in batches and create portfolio backtest tables."""
     missing = [
-        path for path in (
+        path
+        for path in (
             ARTIFACT_DIR / "credit_event_12m_full_logistic.joblib",
             ARTIFACT_DIR / "prepayment_12m_full_logistic.joblib",
-        ) if not path.exists()
+        )
+        if not path.exists()
     ]
     if missing:
         raise FileNotFoundError("Run `make train` before creating scores.")

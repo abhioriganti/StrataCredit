@@ -1,4 +1,5 @@
 """Register persisted models, OOT metrics, and diagnostics in local MLflow."""
+
 from __future__ import annotations
 
 import shutil
@@ -6,7 +7,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import joblib
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
@@ -41,23 +41,60 @@ def register_runs() -> None:
         experiment = mlflow.set_experiment(target)
         score_col = "credit_event_score" if target == "credit_event_12m" else "prepayment_score"
         if model_name.startswith("xgboost"):
-            score_col = "credit_event_xgb_score" if target == "credit_event_12m" else "prepayment_xgb_score"
+            score_col = (
+                "credit_event_xgb_score" if target == "credit_event_12m" else "prepayment_xgb_score"
+            )
             artifact = ARTIFACT_DIR / f"{target}_xgboost.joblib"
         else:
             artifact = ARTIFACT_DIR / f"{target}_full_logistic.joblib"
         with mlflow.start_run(experiment_id=experiment.experiment_id, run_name=model_name):
-            mlflow.set_tags({"model_type": model_name, "train_vintage_range": "2012-2017", "validation_vintage_range": "2018-2019", "test_vintage_range": "2020-2022", "target_definition": f"{target} in t+1 through t+12", "feature_set_version": "snapshot_v1", "git_commit_sha": _git_sha()})
+            mlflow.set_tags(
+                {
+                    "model_type": model_name,
+                    "train_vintage_range": "2012-2017",
+                    "validation_vintage_range": "2018-2019",
+                    "test_vintage_range": "2020-2022",
+                    "target_definition": f"{target} in t+1 through t+12",
+                    "feature_set_version": "snapshot_v1",
+                    "git_commit_sha": _git_sha(),
+                }
+            )
             mlflow.log_params({"artifact": artifact.name, "feature_count": 22})
-            mlflow.log_metrics({k: float(v) for k, v in row.items() if isinstance(v, (int, float, np.number)) and pd.notna(v)})
+            mlflow.log_metrics(
+                {
+                    k: float(v)
+                    for k, v in row.items()
+                    if isinstance(v, (int, float, np.number)) and pd.notna(v)
+                }
+            )
             sample = scores[[target, score_col]].dropna()
             with tempfile.TemporaryDirectory() as directory:
                 directory_path = Path(directory)
                 actual, predicted = sample[target].to_numpy(), sample[score_col].to_numpy()
-                fraction, mean_prediction = calibration_curve(actual, predicted, n_bins=10, strategy="quantile")
-                fig, ax = plt.subplots(); ax.plot(mean_prediction, fraction, marker="o"); ax.plot([0, 1], [0, 1], "--"); ax.set(xlabel="Mean predicted probability", ylabel="Observed event rate", title=f"{target} calibration"); fig.savefig(directory_path / "calibration_plot.png", bbox_inches="tight"); plt.close(fig)
-                fig, ax = plt.subplots(); RocCurveDisplay.from_predictions(actual, predicted, ax=ax); fig.savefig(directory_path / "roc_curve.png", bbox_inches="tight"); plt.close(fig)
-                fig, ax = plt.subplots(); PrecisionRecallDisplay.from_predictions(actual, predicted, ax=ax); fig.savefig(directory_path / "pr_curve.png", bbox_inches="tight"); plt.close(fig)
-                scores.groupby("origination_year").agg(realized=(target, "mean"), predicted=(score_col, "mean")).to_csv(directory_path / "cohort_performance.csv")
+                fraction, mean_prediction = calibration_curve(
+                    actual, predicted, n_bins=10, strategy="quantile"
+                )
+                fig, ax = plt.subplots()
+                ax.plot(mean_prediction, fraction, marker="o")
+                ax.plot([0, 1], [0, 1], "--")
+                ax.set(
+                    xlabel="Mean predicted probability",
+                    ylabel="Observed event rate",
+                    title=f"{target} calibration",
+                )
+                fig.savefig(directory_path / "calibration_plot.png", bbox_inches="tight")
+                plt.close(fig)
+                fig, ax = plt.subplots()
+                RocCurveDisplay.from_predictions(actual, predicted, ax=ax)
+                fig.savefig(directory_path / "roc_curve.png", bbox_inches="tight")
+                plt.close(fig)
+                fig, ax = plt.subplots()
+                PrecisionRecallDisplay.from_predictions(actual, predicted, ax=ax)
+                fig.savefig(directory_path / "pr_curve.png", bbox_inches="tight")
+                plt.close(fig)
+                scores.groupby("origination_year").agg(
+                    realized=(target, "mean"), predicted=(score_col, "mean")
+                ).to_csv(directory_path / "cohort_performance.csv")
                 shutil.copy2(artifact, directory_path / artifact.name)
                 mlflow.log_artifacts(str(directory_path))
 

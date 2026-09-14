@@ -28,18 +28,43 @@ class LogisticMetrics:
 def train_logistic(df: pl.DataFrame, target: str) -> tuple[Pipeline, list[str], LogisticMetrics]:
     """Train an interpretable baseline using only typed, leakage-safe columns."""
     df = encode_categoricals(df).drop_nulls([target])
-    features = get_feature_columns(df, [target, "credit_event_12m", "prepayment_12m", "serious_delinquency_12m"])
+    features = get_feature_columns(
+        df, [target, "credit_event_12m", "prepayment_12m", "serious_delinquency_12m"]
+    )
     x, y = to_numpy(df, features, target)
     if len(np.unique(y)) < 2:
         raise ValueError(f"{target} requires both event and non-event observations")
-    pipeline = Pipeline([("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler()), ("model", LogisticRegression(max_iter=1000, class_weight="balanced", random_state=42))])
+    pipeline = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+            ("model", LogisticRegression(max_iter=1000, class_weight="balanced", random_state=42)),
+        ]
+    )
     pipeline.fit(x, y)
     p = pipeline.predict_proba(x)[:, 1]
     values = classification_metrics(y, p)
-    return pipeline, features, LogisticMetrics(values.get("roc_auc", float("nan")), values.get("pr_auc", float("nan")), values["brier_score"], values["log_loss"], len(y), int(y.sum()))
+    return (
+        pipeline,
+        features,
+        LogisticMetrics(
+            values.get("roc_auc", float("nan")),
+            values.get("pr_auc", float("nan")),
+            values["brier_score"],
+            values["log_loss"],
+            len(y),
+            int(y.sum()),
+        ),
+    )
 
 
-def score_logistic(pipeline: Pipeline, df: pl.DataFrame, feature_columns: list[str], target: str | None = None, split: str = "score") -> tuple[pl.DataFrame, LogisticMetrics | None]:
+def score_logistic(
+    pipeline: Pipeline,
+    df: pl.DataFrame,
+    feature_columns: list[str],
+    target: str | None = None,
+    split: str = "score",
+) -> tuple[pl.DataFrame, LogisticMetrics | None]:
     """Score observations and, where labels exist, return diagnostics."""
     scored = encode_categoricals(df)
     missing = [c for c in feature_columns if c not in scored.columns]
@@ -51,4 +76,11 @@ def score_logistic(pipeline: Pipeline, df: pl.DataFrame, feature_columns: list[s
     if y is None or np.isnan(y).any() or len(np.unique(y)) < 2:
         return scored, None
     values = classification_metrics(y, probability)
-    return scored, LogisticMetrics(values["roc_auc"], values["pr_auc"], values["brier_score"], values["log_loss"], len(y), int(y.sum()))
+    return scored, LogisticMetrics(
+        values["roc_auc"],
+        values["pr_auc"],
+        values["brier_score"],
+        values["log_loss"],
+        len(y),
+        int(y.sum()),
+    )
